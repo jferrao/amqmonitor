@@ -5,6 +5,9 @@ import sqlite3
 
 import stomp
 
+from amqmonitor import parser
+
+
 
 class StatsListener(object):
     def __init__(self, sqlconn):
@@ -13,14 +16,23 @@ class StatsListener(object):
     def on_error(self, headers, message):
         print('received an error %s' % message)
         
-    def on_message(self, headers, message):
+    def on_message(self, headers, content):
 
         date_time = datetime.datetime.fromtimestamp(int(headers['timestamp'][:10]))
-        # @todo Parse message contents
+        data = parser.parse(content)
 
-        sql = 'INSERT INTO queues VALUES ("{timestamp}","{queue}",{size},{consumers},{enqueue},{dequeue},{avg_enqueue_time},{max_enqueue_time})'.format(timestamp=date_time, queue='stomp.test', size=1000, consumers=1, enqueue=1000, dequeue=0, avg_enqueue_time=0.0, max_enqueue_time=0.0)
+        sql = 'INSERT INTO queues VALUES ("{timestamp}","{queue}",{size},{consumers},{enqueue},{dequeue},{avg_enqueue_time},{max_enqueue_time})'.format(
+            timestamp=date_time,
+            queue=data.get('destinationName'),
+            size=data.get('size'),
+            consumers=data.get('consumerCount'),
+            enqueue=data.get('enqueueCount'),
+            dequeue=data.get('dequeueCount'),
+            avg_enqueue_time=data.get('averageEnqueueTime'),
+            max_enqueue_time=data.get('maxEnqueueTime'),
+        )
 
-        c = self.sqlconn.cursor()        
+        c = self.sqlconn.cursor()
         c.execute(sql)
         self.sqlconn.commit()
 
@@ -36,11 +48,11 @@ conn.connect()
 conn.subscribe(destination='/queue/stats.results', id=1, ack='auto', headers={'client-id': 'amqstats'})
 
 
-while True:
+while 1:
     # Broker information
     #conn.send(body='', destination='/queue/ActiveMQ.Statistics.Broker', headers={'reply-to': '/queue/stats.results'})
     # Queue information
-    conn.send(body='', destination='/queue/Statistics.Destination.stomp.test', headers={'reply-to': '/queue/stats.results'})#
+    conn.send(body='', destination='/queue/ActiveMQ.Statistics.Destination.stomp.test', headers={'reply-to': '/queue/stats.results'})#
     # Subscription statistics
     #conn.send(body='', destination='/queue/ActiveMQ.Statistics.Subscription', headers={'reply-to': '/queue/stats.results'})#
     time.sleep(30)
